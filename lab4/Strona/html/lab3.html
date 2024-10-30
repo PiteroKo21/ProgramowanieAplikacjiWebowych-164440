@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="/Strona/css/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lab3</title>
+</head>
+<body class="body">
+    <nav class="navbar">
+        <ul>
+            <li><a href="index.html">Strona Główna</a></li>
+            <li><a href="pionierzy.html">Pionierzy Kosmosu</a></li>
+            <li><a href="technologie.html">Technologie Kosmiczne</a></li>
+            <li><a href="misje.html">Misje Kosmiczne</a></li>
+            <li><a href="kontakt.html">Kontakt</a></li>
+            <li><a href="kolorujtlo.html">kolorujtlo</a></li>
+            <li><a href="timedate.html">timedate</a></li>
+            <li><a href="lab3.html">lab3</a></li>
+        </ul>
+    </nav>    
+
+    <div id="animacjaTestowa1" class="test-block">Kliknij, a się powiększe</div>
+    <script>
+        $("#animacjaTestowa1").on("click", function () {
+  console.log("cos");
+  $(this).animate(
+    {
+      width: "500px",
+      opacity: 0.4,
+      fontSize: "3em",
+      borderWidth: "10px",
+    },
+    1500
+  );
+});
+    </script>
+
+    <div id="animacjaTestowa2" class="test-block">Najedz kursorem</div>
+
+    <script>
+        $("#animacjaTestowa2").on({
+  mouseover: function () {
+    $(this).animate(
+      {
+        width: 300,
+      },
+      800
+    );
+  },
+  mouseout: function () {
+    $(this).animate(
+      {
+        width: 200,
+      },
+      800
+    );
+  },
+});
+    </script>
+
+    <div id="animacjaTestowa3" class="test-block">Kliknij abym urósł</div>
+
+    <script>$("#animacjaTestowa3").on("click", function(){
+        if (!$(this).is("animated")) {
+            $(this).animate({
+                width: "+-" + 50,
+                height: "+=" + 10,
+                opacity: "-=" + 0.1,
+                duration: 3000
+            });
+        }
+    });</script>
+</body>
+</html>
