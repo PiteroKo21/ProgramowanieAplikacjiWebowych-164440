@@ -1,83 +1,132 @@
 <?php
 session_start();
 include('../html/cfg.php');
-
-// Inicjalizacja koszyka
-if (!isset($_SESSION['cart'])) {
-    $_SESSION['cart'] = [];
-}
-
-// Dodawanie produktu do koszyka
-if (isset($_POST['add_to_cart'])) {
-    $product_id = (int)$_POST['product_id'];
-    $quantity = isset($_POST['quantity']) ? (int)$_POST['quantity'] : 1;
-
-    // Sprawdzenie, czy produkt już jest w koszyku
-    if (array_key_exists($product_id, $_SESSION['cart'])) {
-        $_SESSION['cart'][$product_id] += $quantity; // Zwiększ ilość
-    } else {
-        $_SESSION['cart'][$product_id] = $quantity; // Dodaj nowy produkt
-    }
-}
-
-// Usuwanie produktu z koszyka
-if (isset($_POST['remove_from_cart'])) {
-    $product_id = (int)$_POST['product_id'];
-    unset($_SESSION['cart'][$product_id]); // Usunięcie produktu z koszyka
-}
-
-// Wyświetlanie koszyka
 ?>
 <!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koszyk - Historia Lotów Kosmicznych</title>
     <link rel="stylesheet" href="../css/styles.css">
-    <title>Koszyk</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
-<body class="body">
-    <header class="subpage-header">
-        <h1>Koszyk</h1>
-    </header>
-
-    <section class="content">
-        <div class="cart">
-            <h2>Produkty w koszyku</h2>
-            <?php
-            if (empty($_SESSION['cart'])) {
-                echo '<p>Koszyk jest pusty.</p>';
-            } else {
-                echo '<ul>';
-                $total = 0;
-                foreach ($_SESSION['cart'] as $product_id => $quantity) {
-                    $query = "SELECT * FROM produkty WHERE id = $product_id";
-                    $result = mysqli_query($conn, $query);
-                    if ($row = mysqli_fetch_assoc($result)) {
-                        $subtotal = $row['cena_netto'] * $quantity;
-                        $total += $subtotal;
-                        echo '<li>
-                            <div>
-                                <span>' . htmlspecialchars($row['tytul']) . '</span>
-                                <span> - ' . number_format($row['cena_netto'], 2) . ' PLN × ' . $quantity . ' = ' . number_format($subtotal, 2) . ' PLN</span>
-                            </div>
-                            <form method="post" style="display:inline;">
-                                <input type="hidden" name="product_id" value="' . $product_id . '">
-                                <button type="submit" name="remove_from_cart" class="remove-btn">Usuń</button>
-                            </form>
-                        </li>';
-                    }
-                }
-                echo '</ul>';
-                echo '<p class="total">Suma: ' . number_format($total, 2) . ' PLN</p>';
-            }
-            ?>
-            <a href="produkty.php" class="continue-shopping">Kontynuuj zakupy</a>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.php" class="nav-logo">Historia Lotów Kosmicznych</a>
+            <div class="nav-cart">
+                <a href="produkty.php">
+                    <i class="fas fa-store"></i>
+                    <span>Wróć do sklepu</span>
+                </a>
+            </div>
         </div>
-    </section>
+    </nav>
 
-    <footer class="footer">
-        <p>© 2024 Historia Lotów Kosmicznych. Wszystkie prawa zastrzeżone.</p>
-    </footer>
+    <div class="cart-page">
+        <div class="cart-container">
+            <h1 class="cart-title"><i class="fas fa-shopping-cart"></i> Twój Koszyk</h1>
+
+            <?php if (empty($_SESSION['cart'])): ?>
+                <div class="empty-cart">
+                    <i class="fas fa-shopping-basket"></i>
+                    <p>Twój koszyk jest pusty</p>
+                    <a href="produkty.php" class="continue-shopping">
+                        <i class="fas fa-arrow-left"></i> Przejdź do sklepu
+                    </a>
+                </div>
+            <?php else: ?>
+                <div class="cart-content">
+                    <div class="cart-items">
+                        <?php
+                        $total = 0;
+                        foreach ($_SESSION['cart'] as $product_id => $quantity):
+                            $query = "SELECT * FROM produkty WHERE id = $product_id";
+                            $result = mysqli_query($conn, $query);
+                            if ($row = mysqli_fetch_assoc($result)):
+                                $subtotal = $row['cena_netto'] * (1 + $row['podatek_vat']/100) * $quantity;
+                                $total += $subtotal;
+                        ?>
+                            <div class="cart-item">
+                                <div class="item-image">
+                                    <img src="data:image/jpeg;base64,<?php echo base64_encode($row['zdjecie']); ?>" 
+                                         alt="<?php echo htmlspecialchars($row['tytul']); ?>">
+                                </div>
+                                <div class="item-details">
+                                    <h3><?php echo htmlspecialchars($row['tytul']); ?></h3>
+                                    <p class="item-price"><?php echo number_format($row['cena_netto'] * (1 + $row['podatek_vat']/100), 2); ?> PLN</p>
+                                </div>
+                                <div class="item-quantity">
+                                    <form method="post" class="quantity-form">
+                                        <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
+                                        <button type="button" onclick="updateCartQuantity(this, -1)" class="quantity-btn">
+                                            <i class="fas fa-minus"></i>
+                                        </button>
+                                        <input type="number" name="quantity" value="<?php echo $quantity; ?>" 
+                                               min="1" max="99" class="quantity-input" onchange="this.form.submit()">
+                                        <button type="button" onclick="updateCartQuantity(this, 1)" class="quantity-btn">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                                <div class="item-subtotal">
+                                    <p><?php echo number_format($subtotal, 2); ?> PLN</p>
+                                </div>
+                                <div class="item-remove">
+                                    <form method="post">
+                                        <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
+                                        <button type="submit" name="remove_from_cart" class="remove-btn">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php 
+                            endif;
+                        endforeach; 
+                        ?>
+                    </div>
+
+                    <div class="cart-summary">
+                        <h2>Podsumowanie zamówienia</h2>
+                        <div class="summary-details">
+                            <div class="summary-row">
+                                <span>Suma częściowa:</span>
+                                <span><?php echo number_format($total, 2); ?> PLN</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Dostawa:</span>
+                                <span>0.00 PLN</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>Razem:</span>
+                                <span><?php echo number_format($total, 2); ?> PLN</span>
+                            </div>
+                        </div>
+                        <div class="cart-buttons">
+                            <a href="produkty.php" class="continue-shopping">
+                                <i class="fas fa-arrow-left"></i> Kontynuuj zakupy
+                            </a>
+                            <button class="checkout-btn">
+                                <i class="fas fa-lock"></i> Przejdź do kasy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <script>
+    function updateCartQuantity(btn, delta) {
+        const input = btn.parentElement.querySelector('input[type="number"]');
+        const newValue = parseInt(input.value) + delta;
+        if (newValue >= parseInt(input.min) && newValue <= parseInt(input.max)) {
+            input.value = newValue;
+            input.form.submit();
+        }
+    }
+    </script>
 </body>
 </html> 

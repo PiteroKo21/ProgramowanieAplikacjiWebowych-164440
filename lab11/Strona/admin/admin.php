@@ -227,44 +227,141 @@ function UsunPodstrone() {
  */
 function DodajKategorie() {
     global $conn;
-
-    if (isset($_POST['dodaj_kategorie'])) {
-        $nazwa = mysqli_real_escape_string($conn, $_POST['nazwa']);
-        $matka = (int)$_POST['matka'];
-
-        $query = "INSERT INTO kategorie (nazwa, matka) VALUES ('$nazwa', $matka)";
+    
+    if (isset($_POST['nazwa_kategorii'])) {
+        $nazwa = mysqli_real_escape_string($conn, $_POST['nazwa_kategorii']);
+        $rodzic = (int)$_POST['rodzic_kategorii'];
         
+        // Sprawdzamy czy kategoria nadrzędna istnieje (jeśli została wybrana)
+        if ($rodzic > 0) {
+            $check_query = "SELECT id FROM kategorie WHERE id = $rodzic";
+            $check_result = mysqli_query($conn, $check_query);
+            if (mysqli_num_rows($check_result) == 0) {
+                return '<div class="error">Wybrana kategoria nadrzędna nie istnieje.</div>';
+            }
+        }
+        
+        // Jeśli rodzic to 0, ustawiamy NULL
+        $rodzic_sql = $rodzic > 0 ? $rodzic : "NULL";
+        
+        $query = "INSERT INTO kategorie (nazwa, matka) VALUES ('$nazwa', $rodzic_sql)";
         if (mysqli_query($conn, $query)) {
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?success=3');
-            exit();
+            return '<div class="success">Kategoria została dodana pomyślnie.</div>';
         } else {
-            echo '<p class="error">Błąd podczas dodawania kategorii: ' . mysqli_error($conn) . '</p>';
+            return '<div class="error">Błąd podczas dodawania kategorii: ' . mysqli_error($conn) . '</div>';
         }
     }
+}
 
-    $wynik = '
-    <div class="edit-form">
-        <h2>Dodaj Nową Kategorię</h2>
-        <form method="post" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '">
-            <div class="form-group">
-                <label for="nazwa">Nazwa kategorii:</label>
-                <input type="text" name="nazwa" id="nazwa" required>
-            </div>
-            <div class="form-group">
-                <label for="matka">Kategoria główna:</label>
-                <select name="matka" id="matka">
-                    <option value="0">Brak (kategoria główna)</option>
-                    ' . PokazKategorieOpcje() . '
-                </select>
-            </div>
-            <div class="form-buttons">
-                <input type="submit" name="dodaj_kategorie" value="Dodaj kategorię" class="save-btn">
-                <a href="' . $_SERVER['PHP_SELF'] . '" class="cancel-btn">Anuluj</a>
-            </div>
-        </form>
-    </div>';
+/**
+ * Funkcja do usuwania kategorii
+ * Używa globalnej zmiennej połączenia z bazą danych
+ */
+function UsunKategorie() {
+    global $conn;
+    
+    if (isset($_POST['kategoria_id'])) {
+        $id = (int)$_POST['kategoria_id'];
+        
+        // Aktualizuj podkategorie - ustaw ich rodzica na NULL
+        $update_query = "UPDATE kategorie SET matka = NULL WHERE matka = $id";
+        mysqli_query($conn, $update_query);
+        
+        // Usuń kategorię
+        $query = "DELETE FROM kategorie WHERE id = $id LIMIT 1";
+        if (mysqli_query($conn, $query)) {
+            $_SESSION['komunikat'] = array(
+                'typ' => 'success',
+                'tresc' => 'Kategoria została usunięta pomyślnie.'
+            );
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit();
+        } else {
+            $_SESSION['komunikat'] = array(
+                'typ' => 'error',
+                'tresc' => 'Błąd podczas usuwania kategorii: ' . mysqli_error($conn)
+            );
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit();
+        }
+    }
+}
 
-    return $wynik;
+/**
+ * Funkcja do edytowania kategorii
+ * Używa globalnej zmiennej połączenia z bazą danych
+ */
+function EdytujKategorie() {
+    global $conn;
+    
+    if (isset($_POST['edytuj_kategorie_submit'])) {
+        $id = (int)$_POST['kategoria_id'];
+        $nazwa = mysqli_real_escape_string($conn, $_POST['nazwa_kategorii']);
+        $rodzic = (int)$_POST['rodzic_kategorii'];
+        
+        // Sprawdź czy nie próbujemy przenieść kategorii do jej własnej podkategorii
+        if ($id == $rodzic) {
+            return '<div class="error">Kategoria nie może być swoim własnym rodzicem.</div>';
+        }
+        
+        // Sprawdź czy nowy rodzic nie jest podkategorią edytowanej kategorii
+        $query = "WITH RECURSIVE subcategories AS (
+            SELECT id, matka FROM kategorie WHERE id = $id
+            UNION ALL
+            SELECT k.id, k.matka FROM kategorie k
+            INNER JOIN subcategories s ON k.matka = s.id
+        )
+        SELECT COUNT(*) as count FROM subcategories WHERE id = $rodzic";
+        
+        $result = mysqli_query($conn, $query);
+        $row = mysqli_fetch_assoc($result);
+        
+        if ($row['count'] > 0) {
+            return '<div class="error">Nie można przenieść kategorii do jej własnej podkategorii.</div>';
+        }
+        
+        // Jeśli rodzic to 0, ustawiamy NULL
+        $rodzic_sql = $rodzic > 0 ? $rodzic : "NULL";
+        
+        $query = "UPDATE kategorie SET nazwa = '$nazwa', matka = $rodzic_sql WHERE id = $id";
+        if (mysqli_query($conn, $query)) {
+            return '<div class="success">Kategoria została zaktualizowana pomyślnie.</div>';
+        } else {
+            return '<div class="error">Błąd podczas aktualizacji kategorii: ' . mysqli_error($conn) . '</div>';
+        }
+    }
+    
+    // Formularz edycji
+    if (isset($_POST['edytuj_kategorie'])) {
+        $id = (int)$_POST['kategoria_id'];
+        $query = "SELECT * FROM kategorie WHERE id = $id";
+        $result = mysqli_query($conn, $query);
+        $kategoria = mysqli_fetch_assoc($result);
+        
+        return '
+        <div class="category-form">
+            <h3>Edytuj kategorię</h3>
+            <form method="post" action="">
+                <input type="hidden" name="kategoria_id" value="' . $id . '">
+                <div class="form-group">
+                    <label for="nazwa_kategorii">Nazwa kategorii:</label>
+                    <input type="text" id="nazwa_kategorii" name="nazwa_kategorii" 
+                           value="' . htmlspecialchars($kategoria['nazwa']) . '" required>
+                </div>
+                <div class="form-group">
+                    <label for="rodzic_kategorii">Kategoria nadrzędna:</label>
+                    <select id="rodzic_kategorii" name="rodzic_kategorii">
+                        <option value="0">Brak (kategoria główna)</option>
+                        ' . PobierzOpcjeKategorii($kategoria['matka'], $id) . '
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" name="edytuj_kategorie_submit" class="save-btn">Zapisz zmiany</button>
+                    <a href="' . $_SERVER['PHP_SELF'] . '" class="cancel-btn">Anuluj</a>
+                </div>
+            </form>
+        </div>';
+    }
 }
 
 /**
@@ -342,88 +439,146 @@ function PokazPodkategorie($matka) {
 function DodajProdukt() {
     global $conn;
 
-    if (isset($_POST['dodaj_produkt'])) {
-        $tytul = mysqli_real_escape_string($conn, $_POST['tytul']);
-        $opis = mysqli_real_escape_string($conn, $_POST['opis']);
-        $data_wygasniecia = mysqli_real_escape_string($conn, $_POST['data_wygasniecia']);
-        $cena_netto = (float)$_POST['cena_netto'];
-        $podatek_vat = (float)$_POST['podatek_vat'];
-        $ilosc_dostepnych = (int)$_POST['ilosc_dostepnych'];
-        $status_dostepnosci = $_POST['status_dostepnosci'];
-        $kategoria = (int)$_POST['kategoria'];
-        $gabaryt = mysqli_real_escape_string($conn, $_POST['gabaryt']);
-        $zdjecie = $_FILES['zdjecie']['tmp_name'] ? file_get_contents($_FILES['zdjecie']['tmp_name']) : null;
+    if (isset($_POST['dodaj_produkt_submit'])) {
+        if (empty($_POST['tytul']) || empty($_POST['opis']) || empty($_POST['cena_netto']) || 
+            empty($_POST['podatek_vat']) || empty($_POST['ilosc_dostepnych'])) {
+            return '<p class="error">Wypełnij wszystkie wymagane pola!</p>';
+        }
 
-        $query = "INSERT INTO produkty (tytul, opis, data_wygasniecia, cena_netto, podatek_vat, ilosc_dostepnych, status_dostepnosci, kategoria, gabaryt, zdjecie) 
-                  VALUES ('$tytul', '$opis', '$data_wygasniecia', $cena_netto, $podatek_vat, $ilosc_dostepnych, '$status_dostepnosci', $kategoria, '$gabaryt', ?)";
-        
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'b', $zdjecie);
-        
-        if (mysqli_stmt_execute($stmt)) {
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?success=4');
+        try {
+            $tytul = mysqli_real_escape_string($conn, $_POST['tytul']);
+            $opis = mysqli_real_escape_string($conn, $_POST['opis']);
+            $data_wygasniecia = mysqli_real_escape_string($conn, $_POST['data_wygasniecia']);
+            $cena_netto = (float)$_POST['cena_netto'];
+            $podatek_vat = (float)$_POST['podatek_vat'];
+            $ilosc_dostepnych = (int)$_POST['ilosc_dostepnych'];
+            $status_dostepnosci = mysqli_real_escape_string($conn, $_POST['status_dostepnosci']);
+            $kategoria = (int)$_POST['kategoria'];
+            $gabaryt = mysqli_real_escape_string($conn, $_POST['gabaryt']);
+
+            // Sprawdzamy czy jest zdjęcie
+            if (isset($_FILES['zdjecie']) && $_FILES['zdjecie']['size'] > 0) {
+                $zdjecie = file_get_contents($_FILES['zdjecie']['tmp_name']);
+                $query = "INSERT INTO produkty (tytul, opis, data_wygasniecia, cena_netto, podatek_vat, 
+                                             ilosc_dostepnych, status_dostepnosci, kategoria, gabaryt, zdjecie) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                
+                $stmt = mysqli_prepare($conn, $query);
+                if (!$stmt) {
+                    throw new Exception('Błąd przygotowania zapytania: ' . mysqli_error($conn));
+                }
+
+                // Bindowanie parametrów ze zdjęciem
+                mysqli_stmt_bind_param($stmt, 'sssddisissb', $tytul, $opis, $data_wygasniecia, 
+                                     $cena_netto, $podatek_vat, $ilosc_dostepnych, 
+                                     $status_dostepnosci, $kategoria, $gabaryt, $zdjecie);
+            } else {
+                // Zapytanie bez zdjęcia
+                $query = "INSERT INTO produkty (tytul, opis, data_wygasniecia, cena_netto, podatek_vat, 
+                                             ilosc_dostepnych, status_dostepnosci, kategoria, gabaryt) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                
+                $stmt = mysqli_prepare($conn, $query);
+                if (!$stmt) {
+                    throw new Exception('Błąd przygotowania zapytania: ' . mysqli_error($conn));
+                }
+
+                // Bindowanie parametrów bez zdjęcia
+                mysqli_stmt_bind_param($stmt, 'sssddisis', $tytul, $opis, $data_wygasniecia, 
+                                     $cena_netto, $podatek_vat, $ilosc_dostepnych, 
+                                     $status_dostepnosci, $kategoria, $gabaryt);
+            }
+
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception('Błąd wykonania zapytania: ' . mysqli_stmt_error($stmt));
+            }
+
+            header('Location: admin.php?action=produkty&success=4');
             exit();
-        } else {
-            echo '<p class="error">Błąd podczas dodawania produktu: ' . mysqli_error($conn) . '</p>';
+
+        } catch (Exception $e) {
+            return '<p class="error">Błąd: ' . $e->getMessage() . '</p>';
         }
     }
 
-    // Formularz dodawania produktu
-    $wynik = '
-    <div class="edit-form">
-        <h2>Dodaj Nowy Produkt</h2>
-        <form method="post" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" enctype="multipart/form-data">
+    // Reszta kodu formularza pozostaje bez zmian
+    return '
+    <div class="admin-form">
+        <div class="form-header">
+            <h2><i class="fas fa-plus"></i> Dodaj nowy produkt</h2>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="product-form">
             <div class="form-group">
                 <label for="tytul">Tytuł produktu:</label>
-                <input type="text" name="tytul" id="tytul" required>
+                <input type="text" id="tytul" name="tytul" required>
             </div>
+            
             <div class="form-group">
                 <label for="opis">Opis produktu:</label>
-                <textarea name="opis" id="opis" rows="5" required></textarea>
+                <textarea id="opis" name="opis" rows="5" required></textarea>
             </div>
+            
             <div class="form-group">
                 <label for="data_wygasniecia">Data wygaśnięcia:</label>
-                <input type="date" name="data_wygasniecia" id="data_wygasniecia" required>
+                <input type="date" id="data_wygasniecia" name="data_wygasniecia" required>
             </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cena_netto">Cena netto:</label>
+                    <input type="number" step="0.01" id="cena_netto" name="cena_netto" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="podatek_vat">Podatek VAT (%):</label>
+                    <input type="number" step="0.01" id="podatek_vat" name="podatek_vat" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="ilosc_dostepnych">Ilość dostępnych:</label>
+                    <input type="number" id="ilosc_dostepnych" name="ilosc_dostepnych" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="status_dostepnosci">Status dostępności:</label>
+                    <select id="status_dostepnosci" name="status_dostepnosci" required>
+                        <option value="dostepny">Dostępny</option>
+                        <option value="niedostepny">Niedostępny</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="kategoria">Kategoria:</label>
+                    <select id="kategoria" name="kategoria" required>
+                        ' . PobierzOpcjeKategorii() . '
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="gabaryt">Gabaryt:</label>
+                    <input type="text" id="gabaryt" name="gabaryt" required>
+                </div>
+            </div>
+            
             <div class="form-group">
-                <label for="cena_netto">Cena netto:</label>
-                <input type="number" step="0.01" name="cena_netto" id="cena_netto" required>
+                <label for="zdjecie">Zdjęcie produktu:</label>
+                <input type="file" id="zdjecie" name="zdjecie" accept="image/*">
             </div>
-            <div class="form-group">
-                <label for="podatek_vat">Podatek VAT (%):</label>
-                <input type="number" step="0.01" name="podatek_vat" id="podatek_vat" required>
-            </div>
-            <div class="form-group">
-                <label for="ilosc_dostepnych">Ilość dostępnych:</label>
-                <input type="number" name="ilosc_dostepnych" id="ilosc_dostepnych" required>
-            </div>
-            <div class="form-group">
-                <label for="status_dostepnosci">Status dostępności:</label>
-                <select name="status_dostepnosci" id="status_dostepnosci">
-                    <option value="dostepny">Dostępny</option>
-                    <option value="niedostepny">Niedostępny</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="kategoria">Kategoria:</label>
-                <input type="number" name="kategoria" id="kategoria" required>
-            </div>
-            <div class="form-group">
-                <label for="gabaryt">Gabaryt:</label>
-                <input type="text" name="gabaryt" id="gabaryt" required>
-            </div>
-            <div class="form-group">
-                <label for="zdjecie">Zdjęcie:</label>
-                <input type="file" name="zdjecie" id="zdjecie">
-            </div>
+            
             <div class="form-buttons">
-                <input type="submit" name="dodaj_produkt" value="Dodaj produkt" class="save-btn">
-                <a href="' . $_SERVER['PHP_SELF'] . '" class="cancel-btn">Anuluj</a>
+                <button type="submit" name="dodaj_produkt_submit" class="submit-btn">
+                    <i class="fas fa-save"></i> Zapisz produkt
+                </button>
+                <a href="admin.php?action=produkty" class="cancel-btn">
+                    <i class="fas fa-times"></i> Anuluj
+                </a>
             </div>
         </form>
     </div>';
-
-    return $wynik;
 }
 
 /**
@@ -531,28 +686,186 @@ function EdytujProdukt() {
  */
 function PokazProdukty() {
     global $conn;
-    $wynik = '<h2>Lista Produktów</h2>';
-    $wynik .= '<table class="admin-table"><thead><tr><th>ID</th><th>Tytuł</th><th>Status</th><th>Akcje</th></tr></thead><tbody>';
+    $wynik = '
+    <div class="admin-section">
+        <div class="section-header">
+            <h2>Lista Produktów</h2>
+            <a href="?action=produkty&add=1" class="add-button">
+                <i class="fas fa-plus"></i> Dodaj nowy produkt
+            </a>
+        </div>
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tytuł</th>
+                    <th>Cena netto</th>
+                    <th>VAT</th>
+                    <th>Status</th>
+                    <th>Akcje</th>
+                </tr>
+            </thead>
+            <tbody>';
 
-    $query = "SELECT * FROM produkty";
+    $query = "SELECT * FROM produkty ORDER BY id DESC";
     $result = mysqli_query($conn, $query);
 
     while ($row = mysqli_fetch_array($result)) {
-        $wynik .= '<tr>';
-        $wynik .= '<td>' . htmlspecialchars($row['id']) . '</td>';
-        $wynik .= '<td>' . htmlspecialchars($row['tytul']) . '</td>';
-        $wynik .= '<td>' . htmlspecialchars($row['status_dostepnosci']) . '</td>';
-        $wynik .= '<td>
-            <form method="post" style="display:inline;">
-                <input type="hidden" name="id" value="' . $row['id'] . '">
-                <button type="submit" name="edytuj_produkt" class="edit-btn">Edytuj</button>
-                <button type="submit" name="usun_produkt" class="delete-btn" onclick="return confirm(\'Czy na pewno chcesz usunąć ten produkt?\')">Usuń</button>
-            </form>
-        </td>';
-        $wynik .= '</tr>';
+        $wynik .= '<tr>
+            <td>' . htmlspecialchars($row['id']) . '</td>
+            <td>' . htmlspecialchars($row['tytul']) . '</td>
+            <td>' . number_format($row['cena_netto'], 2) . ' PLN</td>
+            <td>' . $row['podatek_vat'] . '%</td>
+            <td>' . htmlspecialchars($row['status_dostepnosci']) . '</td>
+            <td class="action-buttons">
+                <form method="post" style="display:inline;">
+                    <input type="hidden" name="id" value="' . $row['id'] . '">
+                    <button type="submit" name="edytuj_produkt" class="edit-btn" title="Edytuj">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="submit" name="usun_produkt" class="delete-btn" 
+                        onclick="return confirm(\'Czy na pewno chcesz usunąć ten produkt?\')" title="Usuń">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </form>
+            </td>
+        </tr>';
     }
 
-    $wynik .= '</tbody></table>';
+    $wynik .= '</tbody></table></div>';
+    return $wynik;
+}
+
+// Dodaj nową funkcję do wyświetlania drzewa kategorii
+function WyswietlDrzewoKategorii() {
+    global $conn;
+    
+    $wynik = '
+    <div class="category-tree-container">
+        <h2>Zarządzanie Kategoriami</h2>
+        <div class="category-actions">
+            <button onclick="pokazFormularzKategorii()" class="add-button">
+                <i class="fas fa-plus"></i> Dodaj kategorię
+            </button>
+        </div>
+        
+        <div id="formularz-kategorii" style="display:none;" class="category-form">
+            <h3>Dodaj nową kategorię</h3>
+            <form method="post" action="">
+                <div class="form-group">
+                    <label for="nazwa_kategorii">Nazwa kategorii:</label>
+                    <input type="text" id="nazwa_kategorii" name="nazwa_kategorii" required>
+                </div>
+                <div class="form-group">
+                    <label for="rodzic_kategorii">Kategoria nadrzędna:</label>
+                    <select id="rodzic_kategorii" name="rodzic_kategorii">
+                        <option value="0">Brak (kategoria główna)</option>
+                        ' . PobierzOpcjeKategorii() . '
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" name="dodaj_kategorie" class="save-btn">
+                        <i class="fas fa-save"></i> Zapisz
+                    </button>
+                    <button type="button" onclick="ukryjFormularzKategorii()" class="cancel-btn">
+                        <i class="fas fa-times"></i> Anuluj
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="category-tree">
+            ' . PobierzDrzewoKategorii() . '
+        </div>
+    </div>
+    
+    <script>
+    function pokazFormularzKategorii() {
+        document.getElementById("formularz-kategorii").style.display = "block";
+    }
+    
+    function ukryjFormularzKategorii() {
+        document.getElementById("formularz-kategorii").style.display = "none";
+    }
+
+    function dodajPodkategorie(rodzicId) {
+        const form = document.getElementById("formularz-kategorii");
+        const select = document.getElementById("rodzic_kategorii");
+        form.style.display = "block";
+        select.value = rodzicId;
+    }
+    </script>';
+    
+    return $wynik;
+}
+
+function PobierzDrzewoKategorii($rodzic = 0, $poziom = 0) {
+    global $conn;
+    $wynik = '<ul class="category-list">';
+    
+    $query = "SELECT * FROM kategorie WHERE matka " . ($rodzic === 0 ? "IS NULL" : "= $rodzic") . " ORDER BY nazwa";
+    $result = mysqli_query($conn, $query);
+    
+    while ($row = mysqli_fetch_assoc($result)) {
+        $wynik .= '<li class="category-item">
+            <div class="category-content">
+                <span class="category-name">' . str_repeat('—', $poziom) . ' ' . htmlspecialchars($row['nazwa']) . '</span>
+                <div class="category-actions">
+                    <button onclick="dodajPodkategorie(' . $row['id'] . ')" class="add-subcategory-btn" title="Dodaj podkategorię">
+                        <i class="fas fa-plus-circle"></i>
+                    </button>
+                    <form method="post" style="display:inline;">
+                        <input type="hidden" name="kategoria_id" value="' . $row['id'] . '">
+                        <button type="submit" name="edytuj_kategorie" class="edit-btn" title="Edytuj kategorię">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="submit" name="usun_kategorie" class="delete-btn" 
+                            onclick="return confirm(\'Czy na pewno chcesz usunąć kategorię ' . htmlspecialchars($row['nazwa']) . ' i wszystkie jej podkategorie?\')"
+                            title="Usuń kategorię">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>';
+        
+        // Rekurencyjne pobieranie podkategorii
+        $wynik .= PobierzDrzewoKategorii($row['id'], $poziom + 1);
+        $wynik .= '</li>';
+    }
+    
+    $wynik .= '</ul>';
+    return $wynik;
+}
+
+// Dodaj nowe funkcje do obsługi kategorii
+function PobierzOpcjeKategorii($selected = 0, $wylacz_id = null, $rodzic = null, $poziom = 0) {
+    global $conn;
+    $wynik = '';
+    
+    // Zmodyfikowane zapytanie dla obsługi NULL
+    $query = "SELECT * FROM kategorie WHERE " . 
+             ($rodzic === null ? "matka IS NULL" : "matka = $rodzic") . 
+             " ORDER BY nazwa";
+             
+    $result = mysqli_query($conn, $query);
+    
+    if (!$result) {
+        return '<option value="">Błąd: ' . mysqli_error($conn) . '</option>';
+    }
+    
+    while ($row = mysqli_fetch_array($result)) {
+        // Pomijamy kategorię, której nie chcemy pokazywać (np. podczas edycji)
+        if ($row['id'] != $wylacz_id) {
+            $wynik .= '<option value="' . $row['id'] . '"' . 
+                     ($selected == $row['id'] ? ' selected' : '') . '>' .
+                     str_repeat('— ', $poziom) . htmlspecialchars($row['nazwa']) .
+                     '</option>';
+            
+            // Rekurencyjnie pobieramy podkategorie
+            $wynik .= PobierzOpcjeKategorii($selected, $wylacz_id, $row['id'], $poziom + 1);
+        }
+    }
+    
     return $wynik;
 }
 
@@ -600,6 +913,14 @@ if (isset($_SESSION['zalogowany']) && $_SESSION['zalogowany'] === true) {
           </form>';
     echo '<h1>Panel Administracyjny</h1>';
     
+    // Wyświetl komunikat jeśli istnieje i od razu go usuń
+    if (isset($_SESSION['komunikat'])) {
+        echo '<div class="' . $_SESSION['komunikat']['typ'] . ' message-fade">' . 
+             $_SESSION['komunikat']['tresc'] . 
+             '</div>';
+        unset($_SESSION['komunikat']); // Usuń komunikat po wyświetleniu
+    }
+    
     // Dodaj obsługę komunikatów
     if (isset($_GET['success'])) {
         switch ($_GET['success']) {
@@ -621,6 +942,20 @@ if (isset($_SESSION['zalogowany']) && $_SESSION['zalogowany'] === true) {
         }
     }
     
+    // Obsługa kategorii
+    if (isset($_POST['dodaj_kategorie'])) {
+        echo DodajKategorie();
+    } elseif (isset($_POST['usun_kategorie'])) {
+        echo UsunKategorie();
+    }
+    
+    // Wyświetl drzewo kategorii
+    $edycja_kategorii = EdytujKategorie();
+    if ($edycja_kategorii) {
+        echo $edycja_kategorii;
+    }
+    
+    // Wyświetl odpowiednią sekcję w zależności od akcji
     if (isset($_POST['edytuj'])) {
         echo EdytujPodstrone();
     } elseif (isset($_POST['usun'])) {
@@ -628,7 +963,7 @@ if (isset($_SESSION['zalogowany']) && $_SESSION['zalogowany'] === true) {
     } elseif (isset($_GET['action']) && $_GET['action'] == 'dodaj') {
         echo DodajNowaPodstrone();
     } elseif (isset($_GET['action']) && $_GET['action'] == 'produkty') {
-        if (isset($_POST['dodaj_produkt'])) {
+        if (isset($_GET['add'])) {
             echo DodajProdukt();
         } elseif (isset($_POST['usun_produkt'])) {
             echo UsunProdukt();
@@ -638,8 +973,11 @@ if (isset($_SESSION['zalogowany']) && $_SESSION['zalogowany'] === true) {
             echo PokazProdukty();
         }
     } else {
+        // Strona główna panelu - wyświetl listę podstron i drzewo kategorii
         echo ListaPodstron();
-        echo PokazKategorie();
+        echo '<div class="admin-section">';
+        echo WyswietlDrzewoKategorii();
+        echo '</div>';
     }
     
     echo '</div>';
@@ -660,5 +998,21 @@ echo '
     }
 </style>';
 ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Automatyczne usuwanie komunikatów po 5 sekundach
+    const messages = document.querySelectorAll('.message-fade');
+    if (messages.length > 0) {
+        setTimeout(function() {
+            messages.forEach(function(message) {
+                message.style.opacity = '0';
+                setTimeout(function() {
+                    message.remove();
+                }, 1000);
+            });
+        }, 5000);
+    }
+});
+</script>
 </body>
 </html>
